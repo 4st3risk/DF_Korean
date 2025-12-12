@@ -1,0 +1,39 @@
+Mods=모드
+Settings=설정
+Continue active game=계속하기
+Create new world=새로운 세계
+Quit=종료
+
+5 years=5년
+50 years=50년
+100 years=100년
+250 years=250년
+500 years=500년
+
+Medium=중간
+Very low=매우 낮음
+Low=낮음
+High=높음
+Very high=매우 높음
+Large=큼
+Small=작음
+Smaller=매우 작음
+Pocket=주머니
+
+Very rare=매우 희귀
+Rare=희귀
+Sparse=부족함
+Frequent=적당함
+Everywhere=어디에나 있음
+
+
+World map size=맵 크기
+History length=역사 길이
+Number of civilizations=문명 갯수
+Maximum number of sites=대륙 갯수
+Number of beasts=짐슴 수
+Natural savagery=야생성
+Mineral occurrence=미네랄 생성수
+
+Mods install automatically when chosen during world creation.=모드는 월드 생성중 자동으로 설치됩니다.
+Click a mod to open its folder.=모드를 클릭하여 폴더를 여세요.
