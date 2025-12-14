@@ -56,12 +56,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          ZIP_PATH="dist/DF_Korean.zip"
+          if [[ ! -f "$ZIP_PATH" ]]; then
+            ZIP_PATH="$(find dist -maxdepth 3 -name DF_Korean.zip -print -quit)"
+          fi
+          if [[ -z "$ZIP_PATH" || ! -f "$ZIP_PATH" ]]; then
+            echo "DF_Korean.zip not found under dist/" >&2
+            exit 1
+          fi
+
           bash scripts/release.sh upload \
             -r "${{ github.repository }}" \
             -n "DF_Korean" \
             -T "DF_Korean (rolling)" \
             -b "${{ github.sha }}" \
-            -p "dist/DF_Korean.zip"
+            -p "$ZIP_PATH"
 
       - name: Keep last 3 releases
         shell: bash
