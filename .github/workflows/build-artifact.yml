@@ -1,0 +1,37 @@
+name: build-artifact
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+concurrency:
+  group: build-artifact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup MSVC dev cmd (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build + package
+        shell: pwsh
+        run: |
+          ./scripts/build.ps1 -Configuration Release -Platform x64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DF_Korean.zip
+          path: dist/DF_Korean.zip
