@@ -84,14 +84,21 @@ Assert-FileExists $dfOffsetExe
 Assert-FileExists $launcherExe
 Assert-FileExists $hookDll
 
-Copy-Item -LiteralPath $dfOffsetExe -Destination $stagingDir -Force
-Copy-Item -LiteralPath $launcherExe -Destination $stagingDir -Force
-Copy-Item -LiteralPath $hookDll -Destination $stagingDir -Force
+$dataDir = Join-Path $stagingDir 'data'
+New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+
+$installBat = Join-Path $repoRoot 'scripts' 'install.bat'
+Assert-FileExists $installBat
+Copy-Item -LiteralPath $installBat -Destination (Join-Path $stagingDir 'install.bat') -Force
+
+Copy-Item -LiteralPath $dfOffsetExe -Destination $dataDir -Force
+Copy-Item -LiteralPath $launcherExe -Destination $dataDir -Force
+Copy-Item -LiteralPath $hookDll -Destination $dataDir -Force
 
 foreach ($asset in @('font.ttf', 'freetype.dll', 'translation_data.csv', 'translations.txt')) {
   $assetPath = Join-Path $repoRoot $asset
   Assert-FileExists $assetPath
-  Copy-Item -LiteralPath $assetPath -Destination $stagingDir -Force
+  Copy-Item -LiteralPath $assetPath -Destination $dataDir -Force
 }
 
 $zipPath = Join-Path $distDirResolved $ZipName
