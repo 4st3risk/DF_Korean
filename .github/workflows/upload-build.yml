@@ -16,9 +16,26 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2022
+    env:
+      VCPKG_TRIPLET: x64-windows
+      VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}\vcpkg-bincache,readwrite'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Prepare vcpkg binary cache dir
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force vcpkg-bincache | Out-Null
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: vcpkg-bincache
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('scripts/build.ps1') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-
+            vcpkg-${{ runner.os }}-
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
