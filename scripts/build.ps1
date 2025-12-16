@@ -48,6 +48,24 @@ function Invoke-MsBuild {
     /verbosity:minimal
 }
 
+function Get-VcpkgRoot {
+  $cmd = Get-Command vcpkg -ErrorAction SilentlyContinue
+  if ($cmd) {
+    return (Split-Path -Parent $cmd.Source)
+  }
+
+  if ($env:VCPKG_INSTALLATION_ROOT -and (Test-Path -LiteralPath (Join-Path $env:VCPKG_INSTALLATION_ROOT 'vcpkg.exe'))) {
+    return $env:VCPKG_INSTALLATION_ROOT
+  }
+
+  $default = 'C:\vcpkg'
+  if (Test-Path -LiteralPath (Join-Path $default 'vcpkg.exe')) {
+    return $default
+  }
+
+  return $null
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $distDirResolved = (Resolve-Path -LiteralPath $DistDir -ErrorAction SilentlyContinue)
 if (-not $distDirResolved) {
@@ -95,10 +113,39 @@ Copy-Item -LiteralPath $dfOffsetExe -Destination $dataDir -Force
 Copy-Item -LiteralPath $launcherExe -Destination $dataDir -Force
 Copy-Item -LiteralPath $hookDll -Destination $dataDir -Force
 
-foreach ($asset in @('font.ttf', 'freetype.dll', 'translation_data.csv', 'translations.txt')) {
+foreach ($asset in @('font.ttf', 'translation_data.csv', 'translations.txt')) {
   $assetPath = Join-Path $repoRoot $asset
   Assert-FileExists $assetPath
   Copy-Item -LiteralPath $assetPath -Destination $dataDir -Force
+}
+
+$vcpkgRoot = Get-VcpkgRoot
+$freetypeSource = Join-Path $repoRoot 'freetype.dll'
+$extraDlls = @()
+
+if ($Configuration -eq 'Release' -and $vcpkgRoot) {
+  $vcpkgExe = Join-Path $vcpkgRoot 'vcpkg.exe'
+  $triplet = if ($Platform -eq 'x64') { 'x64-windows' } else { 'x86-windows' }
+
+  & $vcpkgExe install "freetype:$triplet" | Out-Host
+
+  $binDir = Join-Path $vcpkgRoot "installed\\$triplet\\bin"
+  $candidate = Join-Path $binDir 'freetype.dll'
+  if (Test-Path -LiteralPath $candidate) {
+    $freetypeSource = $candidate
+    foreach ($name in @('brotlicommon.dll', 'brotlidec.dll', 'bz2.dll', 'libpng16.dll', 'zlib1.dll')) {
+      $dep = Join-Path $binDir $name
+      if (Test-Path -LiteralPath $dep) {
+        $extraDlls += $dep
+      }
+    }
+  }
+}
+
+Assert-FileExists $freetypeSource
+Copy-Item -LiteralPath $freetypeSource -Destination (Join-Path $dataDir 'freetype.dll') -Force
+foreach ($dep in $extraDlls) {
+  Copy-Item -LiteralPath $dep -Destination $dataDir -Force
 }
 
 $zipPath = Join-Path $distDirResolved $ZipName
