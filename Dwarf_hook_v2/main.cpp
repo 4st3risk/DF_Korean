@@ -72,6 +72,59 @@ struct MSVC_String {
     }
 };
 
+extern FT_Face g_ft_face;
+int GetNextUTF8Char(const char* ptr, uint32_t* out_char);
+
+static int ClampInt(int value, int minValue, int maxValue) {
+    if (value < minValue) return minValue;
+    if (value > maxValue) return maxValue;
+    return value;
+}
+
+static int CalcKoreanFontPixelHeight(int tile_h) {
+    if (tile_h <= 0) return 12;
+    int font_px = (tile_h * 3) / 4; // 16px tile -> 12px font
+    return ClampInt(font_px, 8, tile_h);
+}
+
+static int MeasureKoreanTextureWidthPx(const char* text, int tile_h) {
+    if (!g_ft_face || !text || !*text) return 0;
+
+    int font_px = CalcKoreanFontPixelHeight(tile_h);
+    FT_Set_Pixel_Sizes(g_ft_face, 0, font_px);
+
+    int pen_x = 0;
+    const char* p = text;
+    while (*p) {
+        uint32_t unicode_char = 0;
+        int step = GetNextUTF8Char(p, &unicode_char);
+        if (!FT_Load_Char(g_ft_face, unicode_char, FT_LOAD_DEFAULT)) {
+            pen_x += (g_ft_face->glyph->advance.x >> 6);
+        }
+        p += step;
+    }
+
+    int pad_px = max(2, tile_h / 4);
+    return pen_x + pad_px;
+}
+
+static MSVC_String MakeMSVCStringFromBuffer(char* buffer, size_t len) {
+    MSVC_String out{};
+    if (len < 16) {
+        memset(out.data.buf, 0, sizeof(out.data.buf));
+        memcpy(out.data.buf, buffer, len);
+        out.data.buf[len] = '\0';
+        out.size = len;
+        out.capacity = 15;
+        return out;
+    }
+
+    out.data.ptr = buffer;
+    out.size = len;
+    out.capacity = len;
+    return out;
+}
+
 // =========================================================
 // 2. Function Pointers
 // =========================================================
@@ -81,7 +134,7 @@ int SDLCALL Detour_SDL_RenderCopy(SDL_Renderer* renderer, SDL_Texture* texture, 
 SDL_Texture* SDLCALL Detour_SDL_CreateTextureFromSurface(SDL_Renderer* renderer, SDL_Surface* surface);
 void SDLCALL Detour_SDL_DestroyTexture(SDL_Texture* texture);
 void SDLCALL Detour_SDL_RenderPresent(SDL_Renderer* renderer);
-SDL_Texture* GetKoreanTexture(SDL_Renderer* renderer, const char* text, int* out_w, int* out_h);
+SDL_Texture* GetKoreanTexture(SDL_Renderer* renderer, const char* text, int tile_h, int* out_w, int* out_h);
 bool IsValidString(const char* str, size_t max_len = 1024);
 
 typedef SDL_Texture* (SDLCALL* SDL_CreateTextureFromSurface_t)(SDL_Renderer* renderer, SDL_Surface* surface);
@@ -287,158 +340,167 @@ GlossaryTrie g_glossaryTrie;
 
 
 void __fastcall DetourPtrst(void* gps, void* arg2, size_t a3, size_t a4) {
+    enum class PtrstTextType {
+        None,
+        CStr,
+        MSVCString,
+    };
 
-    if (!IsValidString((const char*)arg2)) {
+    PtrstTextType detected_type = PtrstTextType::None;
+    const char* detected_text = nullptr;
+    size_t detected_len = 0;
+
+    if (arg2 != nullptr && !IsBadReadPtr(arg2, sizeof(MSVC_String))) {
+        MSVC_String* strObj = (MSVC_String*)arg2;
+        if (strObj->size > 0 && strObj->size < 2000 && strObj->capacity < 2000 && strObj->size <= strObj->capacity) {
+            const char* strContent = strObj->c_str();
+            size_t max_len = min((size_t)1024, strObj->size + 1);
+            if (IsValidString(strContent, max_len)) {
+                detected_text = strContent;
+                detected_len = strObj->size;
+                detected_type = PtrstTextType::MSVCString;
+            }
+        }
+    }
+
+    if (detected_type == PtrstTextType::None) {
+        const char* rawPtr = (const char*)arg2;
+        if (IsValidString(rawPtr)) {
+            detected_text = rawPtr;
+            detected_len = strnlen(rawPtr, 1024);
+            detected_type = PtrstTextType::CStr;
+        }
+    }
+
+    if (detected_type == PtrstTextType::None || detected_text == nullptr) {
         fpPtrst(gps, arg2, a3, a4);
         return;
     }
 
-    bool is_text = false;
-    const char* detected_text = nullptr;
-    char buffer[1024];
     Uint8 r, g, b;
     GetDFColor(15, &r, &g, &b);
-    if (arg2 != nullptr && !IsBadReadPtr(arg2, 4)) {
-        const char* rawPtr = (const char*)arg2;
-        if (IsPotentialTextChar(rawPtr[0]) && IsPotentialTextChar(rawPtr[1])) {
-            if (!IsBadStringPtrA(rawPtr, 128)) {
-                detected_text = rawPtr;
-                is_text = true;
+
+    if (a3 != 0 && !IsBadReadPtr((void*)a3, 1)) {
+        unsigned char* colorArray = (unsigned char*)a3;
+        unsigned char colorIndex = colorArray[0];
+
+        if (colorIndex > 15 && !g_seenColors[colorIndex]) {
+            g_seenColors[colorIndex] = true;
+            // log_msg("[NEW PALETTE] Found Color number: %d\n", colorIndex);
+        }
+    }
+
+    string key = detected_text;
+    string korText = SmartTranslate(key);
+
+    if (korText.empty()) {
+        fpPtrst(gps, arg2, a3, a4);
+        return;
+    }
+
+    if (a3 != 0 && !IsBadReadPtr((void*)a3, 1)) {
+        unsigned char* colorArray = (unsigned char*)a3;
+        size_t len = key.length();
+
+        unsigned char bestColor = 7;
+        int maxPriority = -1;
+
+        for (size_t i = 0; i < len; i++) {
+            if (IsBadReadPtr(colorArray + i, 1)) break;
+
+            unsigned char col = colorArray[i];
+
+            int priority = 0;
+            if (col == 7 || col == 8 || col == 0) priority = 0;
+            else if (col == 15 || col == 14 || col == 12 || col == 10 || col == 66 || col == 67 || col == 70 || col == 71) priority = 100;
+            else priority = 50;
+
+            if (priority > maxPriority) {
+                maxPriority = priority;
+                bestColor = col;
+            }
+        }
+        GetDFColor(bestColor, &r, &g, &b);
+    }
+
+    int grid_x = *(int*)((char*)gps + 0x84); // Address of x
+    int grid_y = *(int*)((char*)gps + 0x88); // Address of y
+    int tile_w = *(int*)((char*)gps + 0x1D8);
+    int tile_h = *(int*)((char*)gps + 0x1DC);
+    if (tile_w == 0) tile_w = 12;
+    if (tile_h == 0) tile_h = 16;
+
+    int final_pixel_x = 0;
+    int final_pixel_y = grid_y * tile_h;
+
+    if (g_renderer) {
+        int justify = 0;
+        if (a3 != 0 && !IsBadReadPtr((void*)a3, sizeof(int))) {
+            justify = *(int*)a3;
+        }
+
+        if (justify == 1) {
+            int screen_grid_w = *(int*)((char*)gps + 0x28C);
+            if (screen_grid_w == 0) screen_grid_w = 149;
+            int screen_pixel_w = screen_grid_w * tile_w;
+
+            int text_pixel_w = MeasureKoreanTextureWidthPx(korText.c_str(), tile_h);
+            if (text_pixel_w <= 0) text_pixel_w = ((int)korText.length() / 3) * tile_w;
+
+            final_pixel_x = (screen_pixel_w / 2) - (text_pixel_w / 2);
+        }
+        else if (justify == 2) {
+            int screen_grid_w = *(int*)((char*)gps + 0x28C);
+
+            int text_pixel_w = MeasureKoreanTextureWidthPx(korText.c_str(), tile_h);
+            if (text_pixel_w <= 0) text_pixel_w = ((int)korText.length() / 3) * tile_w;
+
+            final_pixel_x = (screen_grid_w * tile_w) - text_pixel_w;
+        }
+        else {
+            final_pixel_x = grid_x * tile_w;
+        }
+
+        char uniqueKey[256];
+        sprintf_s(uniqueKey, "%s_%d_%d_%d", key.c_str(), final_pixel_x, final_pixel_y, tile_h);
+
+        Uint32 current_tick = SDL_GetTicks();
+
+        if (g_renderCache.count(uniqueKey)) {
+            g_renderCache[uniqueKey].last_update_tick = current_tick;
+
+            g_renderCache[uniqueKey].x = final_pixel_x;
+            g_renderCache[uniqueKey].y = final_pixel_y;
+        }
+        else {
+            RenderItem item;
+            item.x = final_pixel_x;
+            item.y = final_pixel_y;
+            item.last_update_tick = current_tick;
+
+            item.texture = GetKoreanTexture(g_renderer, korText.c_str(), tile_h, &item.w, &item.h);
+
+            if (item.texture) {
+                SDL_SetTextureColorMod(item.texture, r, g, b);
+                g_renderCache[uniqueKey] = item;
             }
         }
     }
 
-    if (!is_text && arg2 != nullptr && !IsBadReadPtr(arg2, sizeof(MSVC_String))) {
-        MSVC_String* strObj = (MSVC_String*)arg2;
-        if (strObj->size < 2000 && strObj->capacity < 2000 &&
-            strObj->size <= strObj->capacity) {
-            const char* strContent = strObj->c_str();
-            if (!IsBadReadPtr(strContent, 1) && IsPotentialTextChar(strContent[0])) {
-                detected_text = strContent;
-                is_text = true;
-            }
-        }
+    std::vector<char> placeholderBuf(detected_len + 1, ' ');
+    for (size_t i = 0; i < detected_len; i++) {
+        char c = detected_text[i];
+        placeholderBuf[i] = (c == '\n' || c == '\r' || c == '\t') ? c : ' ';
+    }
+    placeholderBuf[detected_len] = '\0';
+
+    if (detected_type == PtrstTextType::CStr) {
+        fpPtrst(gps, placeholderBuf.data(), a3, a4);
+        return;
     }
 
-    if (is_text && detected_text) {
-
-        if (a3 != 0 && !IsBadReadPtr((void*)a3, 1)) {
-            unsigned char* colorArray = (unsigned char*)a3;
-            unsigned char colorIndex = colorArray[0];
-
-            if (colorIndex > 15 && !g_seenColors[colorIndex]) {
-                g_seenColors[colorIndex] = true;
-                // log_msg("[NEW PALETTE] Found Color number: %d\n", colorIndex);
-            }
-        }
-
-        //printf("[DETECTED] %s\n", detected_text);
-        //printf("[HIDDEN] GPS: addr: 0x%p\n", gps);
-        string key = detected_text;
-        string korText = SmartTranslate(key);
-
-        if (!korText.empty()) {
-
-            if (a3 != 0 && !IsBadReadPtr((void*)a3, 1)) {
-                unsigned char* colorArray = (unsigned char*)a3;
-                size_t len = key.length();
-
-                unsigned char bestColor = 7;
-                int maxPriority = -1;
-
-                for (size_t i = 0; i < len; i++) {
-                    if (IsBadReadPtr(colorArray + i, 1)) break;
-
-                    unsigned char col = colorArray[i];
-
-                    int priority = 0;
-                    if (col == 7 || col == 8 || col == 0) priority = 0;
-                    else if (col == 15 || col == 14 || col == 12 || col == 10 || col == 66 || col == 67 || col == 70 || col == 71) priority = 100;
-                    else priority = 50;
-
-                    if (priority > maxPriority) {
-                        maxPriority = priority;
-                        bestColor = col;
-                    }
-                }
-                GetDFColor(bestColor, &r, &g, &b);
-            }
-            int grid_x = *(int*)((char*)gps + 0x84); // Address of x
-            int grid_y = *(int*)((char*)gps + 0x88); // Address of y
-            int tile_w = *(int*)((char*)gps + 0x1D8);
-            int tile_h = *(int*)((char*)gps + 0x1DC);
-            if (tile_w == 0) tile_w = 12;
-            if (tile_h == 0) tile_h = 16;
-            int final_pixel_x = 0;
-            int final_pixel_y = grid_y * tile_h;
-            if (g_renderer) {
-                char uniqueKey[256];
-                sprintf_s(uniqueKey, "HIDDEN_%s_%d_%d", key.c_str(), grid_x, grid_y);
-                if (*(int*)a3 == 1) {
-                    int screen_grid_w = *(int*)((char*)gps + 0x28C);
-                    if (screen_grid_w == 0) screen_grid_w = 149;
-
-                    int screen_pixel_w = screen_grid_w * tile_w;
-
-                    int text_pixel_w = (int)korText.length() / 3 * tile_w;
-                    final_pixel_x = (screen_pixel_w / 2) - (text_pixel_w / 2);
-                }
-                else if (*(int*)a3 == 2) {
-                    int screen_grid_w = *(int*)((char*)gps + 0x28C);
-                    final_pixel_x = (screen_grid_w * tile_w) - ((int)korText.length() / 3 * tile_w);
-                }
-                else {
-                    final_pixel_x = grid_x * tile_w;
-                }
-                TextRenderCommand cmd;
-                cmd.text = korText;
-                cmd.x = final_pixel_x;
-                cmd.y = final_pixel_y;
-
-                cmd.r = r;
-                cmd.g = g;
-                cmd.b = b;
-
-                sprintf_s(uniqueKey, "%s_%d_%d", key.c_str(), final_pixel_x, final_pixel_y);
-
-                Uint32 current_tick = SDL_GetTicks();
-
-                if (g_renderCache.count(uniqueKey)) {
-                    g_renderCache[uniqueKey].last_update_tick = current_tick;
-
-                    g_renderCache[uniqueKey].x = final_pixel_x;
-                    g_renderCache[uniqueKey].y = final_pixel_y;
-                }
-                else {
-                    RenderItem item;
-                    item.x = final_pixel_x;
-                    item.y = final_pixel_y;
-                    /*item.w = 8;
-                    item.h = 12;*/
-                    item.last_update_tick = current_tick;
-
-                    item.texture = GetKoreanTexture(g_renderer, korText.c_str(), &item.w, &item.h);
-
-                    if (item.texture) {
-                        //printf("Texture secure\n");
-                        SDL_SetTextureColorMod(item.texture, r, g, b);
-                        g_renderCache[uniqueKey] = item;
-                    }
-                }
-
-            }
-            MSVC_String emptyStr;
-            char nullBuf[1] = "";
-            emptyStr.data.buf[0] = '\0';
-            emptyStr.size = 0;
-            emptyStr.capacity = 15;
-            if (!IsBadReadPtr(arg2, sizeof(MSVC_String))) {
-                fpPtrst(gps, &emptyStr, a3, a4);
-                return;
-            }
-        }
-    }
-    fpPtrst(gps, (MSVC_String*)arg2, a3, a4);
+    MSVC_String placeholderStr = MakeMSVCStringFromBuffer(placeholderBuf.data(), detected_len);
+    fpPtrst(gps, &placeholderStr, a3, a4);
 }
 
 void __fastcall DetourAddst(void* gps, MSVC_String* src, uint8_t justify, uint32_t space) {
@@ -468,12 +530,15 @@ void __fastcall DetourAddst(void* gps, MSVC_String* src, uint8_t justify, uint32
             if (screen_grid_w == 0) screen_grid_w = 149;
 
             int screen_pixel_w = screen_grid_w * tile_w;
-            int text_pixel_w = (int)korText.length() / 3 * tile_w;
+            int text_pixel_w = MeasureKoreanTextureWidthPx(korText.c_str(), tile_h);
+            if (text_pixel_w <= 0) text_pixel_w = ((int)korText.length() / 3) * tile_w;
             final_pixel_x = (screen_pixel_w / 2) - (text_pixel_w / 2);
         }
         else if (justify == 2) {
             int screen_grid_w = *(int*)((char*)gps + 0x28C);
-            final_pixel_x = (screen_grid_w * tile_w) - ((int)korText.length() / 3 * tile_w);
+            int text_pixel_w = MeasureKoreanTextureWidthPx(korText.c_str(), tile_h);
+            if (text_pixel_w <= 0) text_pixel_w = ((int)korText.length() / 3) * tile_w;
+            final_pixel_x = (screen_grid_w * tile_w) - text_pixel_w;
         }
         else {
             final_pixel_x = grid_x * tile_w;
@@ -489,7 +554,7 @@ void __fastcall DetourAddst(void* gps, MSVC_String* src, uint8_t justify, uint32
         cmd.b = b;
 
         char uniqueKey[256];
-        sprintf_s(uniqueKey, "%s_%d_%d", key.c_str(), final_pixel_x, final_pixel_y);
+        sprintf_s(uniqueKey, "%s_%d_%d_%d", key.c_str(), final_pixel_x, final_pixel_y, tile_h);
 
         Uint32 current_tick = SDL_GetTicks();
 
@@ -507,7 +572,7 @@ void __fastcall DetourAddst(void* gps, MSVC_String* src, uint8_t justify, uint32
             item.h = 12;*/
             item.last_update_tick = current_tick;
 
-            item.texture = GetKoreanTexture(g_renderer, korText.c_str(), &item.w, &item.h);
+            item.texture = GetKoreanTexture(g_renderer, korText.c_str(), tile_h, &item.w, &item.h);
 
             if (item.texture) {
                 // printf("Texture secure\n");
@@ -516,13 +581,18 @@ void __fastcall DetourAddst(void* gps, MSVC_String* src, uint8_t justify, uint32
             }
         }
 
-        MSVC_String emptyStr = *src;
-        char nullBuf[1] = "";
-        emptyStr.data.buf[0] = '\0';
-        emptyStr.size = 0;
-        if (emptyStr.capacity >= 16) emptyStr.data.ptr = nullBuf;
+        size_t org_len = src->size;
+        if (org_len == 0 && orgText) org_len = strlen(orgText);
 
-        fpAddst(gps, &emptyStr, justify, space);
+        std::vector<char> placeholderBuf(org_len + 1, ' ');
+        for (size_t i = 0; i < org_len; i++) {
+            char c = orgText ? orgText[i] : 0;
+            placeholderBuf[i] = (c == '\n' || c == '\r' || c == '\t') ? c : ' ';
+        }
+        placeholderBuf[org_len] = '\0';
+
+        MSVC_String placeholderStr = MakeMSVCStringFromBuffer(placeholderBuf.data(), org_len);
+        fpAddst(gps, &placeholderStr, justify, space);
     }
     else {
         fpAddst(gps, src, justify, space);
@@ -1073,27 +1143,29 @@ const char* FindTranslation(const char* original) {
     return NULL;
 }
 
-SDL_Texture* GetKoreanTexture(SDL_Renderer* renderer, const char* text, int* out_w, int* out_h) {
+SDL_Texture* GetKoreanTexture(SDL_Renderer* renderer, const char* text, int tile_h, int* out_w, int* out_h) {
     if (!g_ft_face || !text || !*text) return NULL;
+    if (tile_h <= 0) tile_h = 16;
 
-    int w_len = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
-    if (w_len <= 0) return NULL;
-    std::vector<wchar_t> wtext(w_len);
-    MultiByteToWideChar(CP_UTF8, 0, text, -1, wtext.data(), w_len);
+    int font_px = CalcKoreanFontPixelHeight(tile_h);
+    FT_Set_Pixel_Sizes(g_ft_face, 0, font_px);
 
-    FT_Set_Pixel_Sizes(g_ft_face, 0, 12);
-
-    int tex_w = 0;
-    int tex_h = 16;
     int pen_x = 0;
-
-    for (int i = 0; i < w_len - 1; i++) {
-        if (FT_Load_Char(g_ft_face, wtext[i], FT_LOAD_DEFAULT)) continue;
-        pen_x += (g_ft_face->glyph->advance.x >> 6);
+    const char* measure_p = text;
+    while (*measure_p) {
+        uint32_t unicode_char = 0;
+        int step = GetNextUTF8Char(measure_p, &unicode_char);
+        if (!FT_Load_Char(g_ft_face, unicode_char, FT_LOAD_DEFAULT)) {
+            pen_x += (g_ft_face->glyph->advance.x >> 6);
+        }
+        measure_p += step;
     }
-    tex_w = pen_x + 5;
 
-    if (tex_w <= 0) return NULL;
+    int tex_h = tile_h;
+    int pad_px = max(2, tile_h / 4);
+    int tex_w = pen_x + pad_px;
+
+    if (tex_w <= 0 || tex_h <= 0) return NULL;
 
     SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, tex_w, tex_h, 32, SDL_PIXELFORMAT_RGBA32);
     if (!surface) return NULL;
@@ -1103,7 +1175,7 @@ SDL_Texture* GetKoreanTexture(SDL_Renderer* renderer, const char* text, int* out
     SDL_UnlockSurface(surface);
 
     pen_x = 0;
-    int baseline = 15; // Should be changed depending on Y
+    int baseline = tex_h - 1;
 
     SDL_LockSurface(surface);
     Uint32* pixels = (Uint32*)surface->pixels;
@@ -1115,7 +1187,10 @@ SDL_Texture* GetKoreanTexture(SDL_Renderer* renderer, const char* text, int* out
         uint32_t unicode_char = 0;
         int step = GetNextUTF8Char(p, &unicode_char);
 
-        if (FT_Load_Char(g_ft_face, unicode_char, FT_LOAD_RENDER)) continue;
+        if (FT_Load_Char(g_ft_face, unicode_char, FT_LOAD_RENDER)) {
+            p += step;
+            continue;
+        }
 
         FT_Bitmap* bitmap = &g_ft_face->glyph->bitmap;
         int bearingX = g_ft_face->glyph->bitmap_left;

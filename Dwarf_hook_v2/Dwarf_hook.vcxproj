@@ -71,20 +71,20 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>C:\Users\ast3r\Downloads\minhook-1.3.4;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\ast3r\Downloads\minhook-1.3.4\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)third_party\minhook\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>C:\Users\ast3r\Downloads\minhook-1.3.4;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\ast3r\Downloads\minhook-1.3.4\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)third_party\minhook\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>C:\Users\ast3r\Downloads\minhook-1.3.4;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\ast3r\Downloads\minhook-1.3.4\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)third_party\minhook\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\Users\ast3r\Downloads\minhook-1.3.4;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\ast3r\Downloads\minhook-1.3.4\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)third_party\minhook\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -94,14 +94,14 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\Users\ast3r\Downloads\freetype-2.14.1\include;C:\Users\ast3r\Downloads\SDL2-2.32.8\include;C:\Users\ast3r\Downloads\minhook-1.3.4\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\SDL2\include;$(ProjectDir)third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>C:\Users\ast3r\Downloads\freetype-2.14.1\objs\x64\Debug;C:\Users\ast3r\Downloads\SDL2-2.32.8\lib\x64;C:\Users\ast3r\source\repos\Dwarf_hook\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>libMinHook.x64.lib;SDL2.lib;SDL2main.lib;SDL2test.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -115,7 +115,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\Users\ast3r\Downloads\freetype-2.14.1\include;C:\Users\ast3r\Downloads\SDL2-2.32.8\include;C:\Users\ast3r\Downloads\minhook-1.3.4\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\SDL2\include;$(ProjectDir)third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -124,7 +124,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>C:\Users\ast3r\Downloads\freetype-2.14.1\objs\x64\Debug;C:\Users\ast3r\Downloads\SDL2-2.32.8\lib\x64;C:\Users\ast3r\source\repos\Dwarf_hook\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>libMinHook.x64.lib;SDL2.lib;SDL2main.lib;SDL2test.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -136,14 +136,14 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\Users\ast3r\Downloads\freetype-2.14.1\include;C:\Users\ast3r\Downloads\SDL2-2.32.8\include;C:\Users\ast3r\Downloads\minhook-1.3.4\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\SDL2\include;$(ProjectDir)third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>C:\Users\ast3r\Downloads\freetype-2.14.1\objs\x64\Debug;C:\Users\ast3r\Downloads\SDL2-2.32.8\lib\x64;C:\Users\ast3r\source\repos\Dwarf_hook\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>libMinHook.x64.lib;SDL2.lib;SDL2main.lib;SDL2test.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -157,7 +157,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\Users\ast3r\Downloads\freetype-2.14.1\include;C:\Users\ast3r\Downloads\SDL2-2.32.8\include;C:\Users\ast3r\Downloads\minhook-1.3.4\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\SDL2\include;$(ProjectDir)third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -166,7 +166,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>C:\Users\ast3r\Downloads\freetype-2.14.1\objs\x64\Debug;C:\Users\ast3r\Downloads\SDL2-2.32.8\lib\x64;C:\Users\ast3r\source\repos\Dwarf_hook\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>libMinHook.x64.lib;SDL2.lib;SDL2main.lib;SDL2test.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>

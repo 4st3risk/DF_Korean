@@ -1,0 +1,88 @@
+name: upload-build
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upload-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup MSVC dev cmd (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build + package
+        shell: pwsh
+        run: |
+          ./scripts/build.ps1 -Configuration Release -Platform x64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DF_Korean.zip
+          path: dist/DF_Korean.zip
+
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DF_Korean.zip
+          path: dist
+
+      - name: Create release (rolling)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ZIP_PATH="dist/DF_Korean.zip"
+          if [[ ! -f "$ZIP_PATH" ]]; then
+            ZIP_PATH="$(find dist -maxdepth 3 -name DF_Korean.zip -print -quit)"
+          fi
+          if [[ -z "$ZIP_PATH" || ! -f "$ZIP_PATH" ]]; then
+            echo "DF_Korean.zip not found under dist/" >&2
+            exit 1
+          fi
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          bash scripts/release.sh upload \
+            -r "${{ github.repository }}" \
+            -n "DF_Korean" \
+            -T "DF_Korean (${SHORT_SHA})" \
+            -b "${{ github.sha }}" \
+            -p "$ZIP_PATH"
+
+      - name: Keep last 3 releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/release.sh delete \
+            -r "${{ github.repository }}" \
+            -n "DF_Korean" \
+            -l 3
+
